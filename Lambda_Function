@@ -1,0 +1,104 @@
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import {
+  DynamoDBDocumentClient,
+  ScanCommand,
+  PutCommand,
+  GetCommand,
+  DeleteCommand,
+} from "@aws-sdk/lib-dynamodb";
+
+// Initialize the DynamoDB client
+const client = new DynamoDBClient({});
+
+// Create the DynamoDB Document Client which simplifies working with DynamoDB
+const dynamo = DynamoDBDocumentClient.from(client);
+
+// Define the DynamoDB table name for storing book details
+const tableName = "books_details"; // changed to reflect books data
+
+export const handler = async (event, context) => {
+  let body;
+  let statusCode = 200;
+  const headers = {
+    "Content-Type": "application/json",
+  };
+
+  try {
+    switch (event.routeKey) {
+      // DELETE /items/{id} - Delete a book based on its ID
+      case "DELETE /items/{id}":
+        // Send a Delete command to DynamoDB
+        await dynamo.send(
+          new DeleteCommand({
+            TableName: tableName,
+            Key: {
+              // Assuming 'id' is the primary key of the book in the DynamoDB table
+              id: event.pathParameters.id,
+            },
+          })
+        );
+        body = Deleted book with ID ${event.pathParameters.id};
+        break;
+
+      // GET /items/{id} - Retrieve a single book by its ID
+      case "GET /items/{id}":
+        // Send a Get command to DynamoDB to retrieve the book by ID
+        body = await dynamo.send(
+          new GetCommand({
+            TableName: tableName,
+            Key: {
+              id: event.pathParameters.id,
+            },
+          })
+        );
+        body = body.Item; // Extract the item from the response
+        break;
+
+      // GET /items - Retrieve all books in the library
+      case "GET /items":
+        // Send a Scan command to DynamoDB to get all items from the table
+        body = await dynamo.send(
+          new ScanCommand({ TableName: tableName })
+        );
+        body = body.Items; // Extract all items from the scan response
+        break;
+
+      // PUT /items - Add or update a book in the library
+      case "PUT /items":
+        let requestJSON = JSON.parse(event.body); // Parse the incoming request body
+        // Send a Put command to DynamoDB to insert/update the book
+        await dynamo.send(
+          new PutCommand({
+            TableName: tableName,
+            Item: {
+              id: requestJSON.id,             // Unique book ID
+              title: requestJSON.title,       // Book title
+              author: requestJSON.author,     // Author of the book
+              genre: requestJSON.genre,       // Genre of the book
+              publicationYear: requestJSON.publicationYear, // Publication year
+              isbn: requestJSON.isbn,         // ISBN number
+              availableCopies: requestJSON.availableCopies, // Copies available in the library
+              location: requestJSON.location, // Shelf location
+            },
+          })
+        );
+        body = Put book with ID ${requestJSON.id}; // Respond with a success message
+        break;
+
+      default:
+        throw new Error(Unsupported route: "${event.routeKey}"); // If the route is not supported, throw an error
+    }
+  } catch (err) {
+    statusCode = 400; // If an error occurs, set status code to 400
+    body = err.message; // Set the error message in the response body
+  } finally {
+    body = JSON.stringify(body); // Convert the response body to a JSON string
+  }
+
+  // Return the response with the appropriate status code, body, and headers
+  return {
+    statusCode,
+    body,
+    headers,
+  };
+};
